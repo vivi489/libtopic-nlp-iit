@@ -1,8 +1,10 @@
 import os, pickle, sys, re
 from gensim.models import Word2Vec
 from gensim.models.doc2vec import Doc2Vec
+from scipy.spatial.distance import cosine
 from collections import defaultdict, Counter
 from operator import itemgetter
+
 from math import sqrt
 
 def get_suggest_f_tuple_map(df): #pandas frame (web_id, suggests, topic)

@@ -3,7 +3,7 @@ import numpy as np
 
 def label2binary(list_label, df=3):
     label_counts = Counter(list_label)
-    retVal = [(not x=="NULL") and (not x==-1) and label_counts[x]>=df for x in list_label]
+    retVal = [(x==-2) or ((not x=="NULL") and (not x==-1) and label_counts[x]>=df) for x in list_label]
     return retVal
 
 class Evaluator:

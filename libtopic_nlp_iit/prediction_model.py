@@ -83,16 +83,17 @@ class UnsupervisedPredictor:
         dbcursor = self.collection.find({"topic": topic}, dict_attrib).sort("topic_probability", pymongo.DESCENDING)
         return dbcursor2df(dbcursor)
     
-    def predict_subtopics_on_vec(self, vec_col_name, lbd=0.50):
-        retVal = {}
+    def predict_subtopics_on_vec(self, vec_col_name, lbds): #return a list of dict of same length of lbds
+        retVal = [dict() for _ in range(len(lbds))]
         topics = self.collection.distinct(key="topic")
         for t in topics:
             df_t = self._get_topic_df(t, [vec_col_name])
             df_t[vec_col_name] = df_t[vec_col_name].apply(lambda v: pickle.loads(v))
             #docs with no valid s.k.w
             invalid_doc_ids = df_t["web_id"][df_t.apply(lambda doc: len(doc[vec_col_name])==0, axis=1)]
+            if vec_col_name == "vec_doc": assert len(invalid_doc_ids)==0
             df_t = df_t[df_t.apply(lambda doc: len(doc[vec_col_name])>0, axis=1)]
-            pairs = []
+            lbd_pairs = [list() for _ in range(len(lbds))] # pair lists for all thresholds
             for i in range(len(df_t)):
                 for j in range(i+1, len(df_t)):
                     sim = 0
@@ -101,30 +102,32 @@ class UnsupervisedPredictor:
                         sim = 1 - cosine(df_t.iloc[i][vec_col_name], df_t.iloc[j][vec_col_name])
                     else:
                         sim = self.sim_mat["sim_%s"%vec_col_name][(wid1, wid2)]\
-                            if wid1 < wid2 else self.s2s_vsim[(wid2, wid1)]
-                    if sim >= lbd:
-                        pairs.append((wid1, wid2))
-            dict_webId2clusterId = UnionFinder().union_find(pairs)
-            unpaired_id_index = max(list(dict_webId2clusterId.values()))+1 if len(dict_webId2clusterId)>0 else 0
-            for wid in df_t["web_id"]:
-                if not wid in dict_webId2clusterId:
-                    dict_webId2clusterId[wid] = unpaired_id_index
-                    unpaired_id_index += 1
-            for wid in invalid_doc_ids:
-                dict_webId2clusterId[wid] = -1
-            retVal.update(dict_webId2clusterId)
+                            if wid1 < wid2 else self.sim_mat["sim_%s"%vec_col_name][(wid2, wid1)]
+                    for k in range(len(lbds)):
+                        if sim >= lbds[k]:
+                            lbd_pairs[k].append((wid1, wid2))
+            for i in range(len(lbds)):
+                dict_webId2clusterId = UnionFinder().union_find(lbd_pairs[i])
+                unpaired_id_index = max(list(dict_webId2clusterId.values()))+1 if len(dict_webId2clusterId)>0 else 0
+                for wid in df_t["web_id"]:
+                    if not wid in dict_webId2clusterId:
+                        dict_webId2clusterId[wid] = unpaired_id_index
+                        unpaired_id_index += 1
+                for wid in invalid_doc_ids:
+                    dict_webId2clusterId[wid] = -1
+                retVal[i].update(dict_webId2clusterId)
             #some topics do not reach 30 documents in total; the next assertion is optionally controlled
             #assert len(to_append)>=30, "sKeyWord_vec to_append >= 30, " + str(len(to_append))
         return retVal
     
-    def predict_subtopics_on_bow(self, vec_col_name, lbd=0.50):
-        retVal = {}
+    def predict_subtopics_on_bow(self, vec_col_name, lbds): #return a list of dict of same length of lbds
+        retVal = [dict() for _ in range(len(lbds))]
         topics = self.collection.distinct(key="topic")
         for t in topics:
             df_t = self._get_topic_df(t, [vec_col_name])
             df_t[vec_col_name] = df_t[vec_col_name].apply(lambda x: re.split("\s+", x.strip()))
             df_t[vec_col_name] = df_t[vec_col_name].apply(lambda x: Counter(x))
-            pairs = []
+            lbd_pairs = [list() for _ in range(len(lbds))] # pair lists for all thresholds
             for i in range(len(df_t)):
                 for j in range(i+1, len(df_t)):
                     sim = 0
@@ -133,29 +136,35 @@ class UnsupervisedPredictor:
                         sim = 1 - dict_cosine(df_t.iloc[i][vec_col_name], df_t.iloc[j][vec_col_name])
                     else:
                         sim = self.sim_mat["sim_%s"%vec_col_name][(wid1, wid2)]\
-                            if wid1 < wid2 else self.s2s_vsim[(wid2, wid1)]
-                    if sim >= lbd:
-                        pairs.append((wid1, wid2))
-            dict_webId2clusterId = UnionFinder().union_find(pairs)
-            unpaired_id_index = max(list(dict_webId2clusterId.values()))+1 if len(dict_webId2clusterId)>0 else 0
-            for wid in df_t["web_id"]:
-                if not wid in dict_webId2clusterId:
-                    dict_webId2clusterId[wid] = unpaired_id_index
-                    unpaired_id_index += 1
-            retVal.update(dict_webId2clusterId)
+                            if wid1 < wid2 else self.sim_mat["sim_%s"%vec_col_name][(wid2, wid1)]
+                for k in range(len(lbds)):
+                    if sim >= lbds[k]:
+                        lbd_pairs[k].append((wid1, wid2))
+            for i in range(len(lbds)):
+                dict_webId2clusterId = UnionFinder().union_find(lbd_pairs[i])
+                unpaired_id_index = max(list(dict_webId2clusterId.values()))+1 if len(dict_webId2clusterId)>0 else 0
+                for wid in df_t["web_id"]:
+                    if not wid in dict_webId2clusterId:
+                        dict_webId2clusterId[wid] = unpaired_id_index
+                        unpaired_id_index += 1
+                retVal[i].update(dict_webId2clusterId)
         #some topics do not reach 30 documents in total; the next assertion is optionally controlled
         #assert len(to_append)>=30, "sKeyWord_vec to_append >= 30, " + str(len(to_append))
         return retVal
     
-    def predict_subtopics_on_topic_ranking(self, rlbd=0):
-        retVal = {}
-        topics = self.collection.distinct(key="topic")
-        for t in topics:
-            df_t = self._get_topic_df(t, [])
-            for i in range(rlbd):
-                retVal[df_t["web_id"][i]] = 0
-            for i in range(rlbd, len(df_t)):
-                retVal[df_t["web_id"][i]] = i - rlbd + 1
+    def predict_subtopics_on_topic_ranking(self, rlbds): #return a list of dict of same length of rlbds
+        retVal = [dict() for _ in range(len(rlbds))]
+        for k in range(len(rlbds)):
+            pred = {}
+            rlbd = rlbds[k]
+            topics = self.collection.distinct(key="topic")
+            for t in topics:
+                df_t = self._get_topic_df(t, [])
+                for i in range(rlbd):
+                    pred[df_t["web_id"][i]] = -2
+                for i in range(rlbd, len(df_t)):
+                    pred[df_t["web_id"][i]] = -1
+            retVal[k].update(pred)
         return retVal
 
 

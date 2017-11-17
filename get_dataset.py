@@ -59,7 +59,21 @@ def make_dataset(db, qf_name, db_dataset, tokenize=False):
     df_target = pd.read_csv("label_%s.csv"%qf_name)
     df_target = df_target.loc[[~df_target["label"].isnull()][0]]
     
+    # docs were sorted on (topic, topic_probability) at doc2vec training
+    # the next line assumes wrong order
+    #list_vec_doc = get_doc_vec_list(os.path.join(D2V_DIR, "doc2vec_model_%s"%qf_name))
+    topics = dbcursor.distinct(key="topic")
+    doc_count = 0
+    index2docvecpos = {}
+    for t in sorted(topics):
+        dbcursor = db[qf_name].find({"topic": t}, {"web_id": 1, "index": 1})\
+            .sort([("topic_probability", pymongo.DESCENDING)])
+        for doc in dbcursor:
+            index2docvecpos[doc["index"]] = doc_count
+            doc_count += 1
+    #print("doc_count=", doc_count)
     list_vec_doc = get_doc_vec_list(os.path.join(D2V_DIR, "doc2vec_model_%s"%qf_name))
+    #print("list_vec_doc size=", len(list_vec_doc))
     list_window_size = [5, 8, 10]
     list_suggest_word_vec, list_suggest_word_vec_no = [], []
     for size in list_window_size:
@@ -70,13 +84,13 @@ def make_dataset(db, qf_name, db_dataset, tokenize=False):
         doc = db[qf_name].find_one({"web_id": wid}, {"_id": False})
         doc["label"] = row[1]["label"]
         doc["suggest_f"] = dict_suggest_f[doc["web_id"]]
-        doc["vec_doc"] = pickle.dumps(list_vec_doc[doc["index"]])
+        doc["vec_doc"] = pickle.dumps(list_vec_doc[index2docvecpos[doc["index"]]])
         for size,  suggest_word_vec, suggest_word_vec_no in\
             zip(list_window_size, list_suggest_word_vec, list_suggest_word_vec_no):
             doc["sKeyWord_%d"%size] = get_valid_sKeyWord(doc, qf_name_dict[qf_name], suggest_word_vec)
             doc["vec_sKeyWord_%d"%size] = pickle.dumps(get_valid_sKeyWord_vec(doc, qf_name_dict[qf_name], suggest_word_vec))
-            doc["sKeyWord_wikiOnly_%d"%size] = get_valid_sKeyWord(doc, qf_name_dict[qf_name], suggest_word_vec)
-            doc["vec_sKeyWord_wikiOnly_%d"%size] = pickle.dumps(get_valid_sKeyWord_vec(doc, qf_name_dict[qf_name], suggest_word_vec))
+            doc["sKeyWord_wikiOnly_%d"%size] = get_valid_sKeyWord(doc, qf_name_dict[qf_name], suggest_word_vec_no)
+            doc["vec_sKeyWord_wikiOnly_%d"%size] = pickle.dumps(get_valid_sKeyWord_vec(doc, qf_name_dict[qf_name], suggest_word_vec_no))
         insert_doc(db_dataset, "%s"%qf_name, doc)
     if tokenize:
         print("%s: tokenizing.."%qf_name)
