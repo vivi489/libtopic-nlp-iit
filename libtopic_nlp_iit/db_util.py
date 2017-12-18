@@ -9,7 +9,7 @@ def validate_doc(row, order_index=None): #get ready for db insertion
     if doc["content"][-1] == '\n':
         doc["content"] = doc["content"][:-1]
     doc["entry"] = " ".join(ast.literal_eval(doc["entry"]))
-    doc["suggest_ranks"] = json.loads(doc["suggest_ranks"])
+    #doc["suggest_ranks"] = json.loads(doc["suggest_ranks"])
     doc["topic"] = int(doc["topic"])
     doc["topic_probability"] = float(doc["topic_probability"])
     if order_index is not None: doc["index"] = order_index
