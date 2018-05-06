@@ -53,17 +53,17 @@ def extract_one_segment_suggest_keywords(db, qf_name, qf_name_JPC): #retrieve se
     return retVal
 
 def tokenize_doc_collection(db, qf_name):
-    q_wid = deque()
+    q_oid = deque()
     with open("%s_temp"%qf_name ,'w') as f:
         for doc in db[qf_name].find({}, snapshot=True):
-            q_wid.append(doc["web_id"])
+            q_oid.append(doc["_id"])
             f.write(doc["content"])
             f.write('\n')
     subprocess.run(["mecab", "-b 200000", "-Owakati", "%s_temp"%qf_name, "-o", "%s_token_temp"%qf_name])
     with open("%s_token_temp"%qf_name ,'r') as f:
         for line in f:
-            db[qf_name].update_one({"web_id": q_wid[0]}, {"$set": {"token": line}})
-            q_wid.popleft()
+            db[qf_name].update_one({"_id": q_oid[0]}, {"$set": {"token": line}})
+            q_oid.popleft()
     subprocess.run("rm ./%s_temp"%qf_name, shell=True)
     subprocess.run("rm ./%s_token_temp"%qf_name, shell=True)
 
